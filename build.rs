@@ -43,7 +43,7 @@ fn main() {
     };
 
     // Get current date and time
-    let now = chrono::Utc::now();
+    let now = chrono::Local::now();
     let build_date = now.format("%Y-%m-%d %H:%M:%S UTC").to_string();
 
     // Write the git hash and build date to a file
