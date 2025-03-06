@@ -1,4 +1,3 @@
-pub mod build_info;
 pub mod macros;
 pub mod parser;
 pub mod state;
