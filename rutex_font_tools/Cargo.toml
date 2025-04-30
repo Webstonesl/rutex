@@ -1,0 +1,26 @@
+[package]
+name = "rutex_font_tools"
+version = "0.1.0"
+edition = "2024"
+
+[lints.rust]
+unexpected_cfgs = "allow"
+
+[features]
+google_fonts = ["reqwest", "serde", "serde_json"]
+os_fonts = []
+
+[dependencies]
+chrono = "0.4.40"
+easybitflags = "0.2.0"
+regex = "1.11.1"
+reqwest = { version = "0.12.15", optional = true, features = [
+    "blocking",
+    "json",
+] }
+serde = { version = "1.0.219", optional = true, features = ["derive"] }
+serde_json = { version = "1.0.140", optional = true }
+thiserror = "2.0.12"
+
+
+[dev-dependencies]

@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.cargo.features": [
+        "google_fonts",
+        "os_fonts"
+    ]
+}
