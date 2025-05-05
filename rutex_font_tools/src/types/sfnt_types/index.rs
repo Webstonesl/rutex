@@ -8,7 +8,7 @@ use std::{
 use thiserror::Error;
 
 use super::{SFNTReadable, SFNTStream};
-
+#[allow(missing_docs)]
 #[derive(Error, Debug)]
 pub enum SFNTError {
     #[error("Invalid header found ({0:?})")]
@@ -37,13 +37,19 @@ pub enum SFNTError {
     NotYetImplemented(String),
     #[error("{0} {1:?} is not found")]
     SomethingIsNotFound(&'static str, String),
+    #[error("Invalid {0}: {1:?}")]
+    Invalid(&'static str, String),
 }
+
 impl SFNTError {
+    /// A helpermethod to get a not yet implemented error
     pub fn not_yet_implemented<T: ToString>(t: T) -> Self {
         SFNTError::NotYetImplemented(t.to_string())
     }
 }
 
+/// Different Type of SFNT Scalar Types
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Copy)]
 pub enum SFNTScalarType {
     TrueType,
@@ -89,11 +95,16 @@ impl AsRef<[u8; 4]> for TableTag {
         &self.0
     }
 }
+/// A struct representing a table in an SFNT table
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TableReference {
+    /// The label of the tag.
     pub tag: TableTag,
+    /// Checksum of the table reference.
     pub checksum: u32,
+    /// Offset from the start of the file
     pub offset: u32,
+    /// Length of the table
     pub length: u32,
 }
 

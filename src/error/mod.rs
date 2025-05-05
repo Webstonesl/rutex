@@ -1,6 +1,7 @@
 #[cfg(test)]
 use std::backtrace::Backtrace;
 use std::{
+    char::DecodeUtf16Error,
     fmt::{Debug, Display},
     num::ParseIntError,
     str::Utf8Error,
@@ -8,7 +9,7 @@ use std::{
 
 use crate::pdf::maths;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     IoError,
     EoFError,
@@ -28,6 +29,8 @@ pub enum ErrorKind {
     PdfParseUnknownKeyword,
     PdfParseUnendingStream,
     PdfParseIllegalSymbol,
+    KeyError,
+    NotImplemented,
 }
 
 impl Into<Error> for ErrorKind {
@@ -41,6 +44,16 @@ pub struct Error {
     pub(crate) message: Option<String>,
     #[cfg(test)]
     pub(crate) backtrace: Backtrace,
+}
+impl Clone for Error {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            message: self.message.clone(),
+            #[cfg(test)]
+            backtrace: Backtrace::capture(),
+        }
+    }
 }
 // pub use ErrorKind::*;
 impl Error {
@@ -78,26 +91,26 @@ impl Error {
         }
     }
 }
-impl From<&utf8streamreader::errors::Error> for Error {
-    fn from(value: &utf8streamreader::errors::Error) -> Self {
-        match value {
-            utf8streamreader::errors::Error::IoError(error) => Self {
-                kind: ErrorKind::IoError,
-                message: Some(error.to_string()),
-                #[cfg(test)]
-                backtrace: Backtrace::force_capture(),
-            },
-            utf8streamreader::errors::Error::EofError => Error {
-                kind: ErrorKind::EoFError,
-                message: Some("EOF reached".to_string()),
-                #[cfg(test)]
-                backtrace: Backtrace::force_capture(),
-            },
-            utf8streamreader::errors::Error::Other(s) => Error::read_error(s.clone()),
-            utf8streamreader::errors::Error::Utf8Error(s) => Error::read_error(s.clone()),
-        }
-    }
-}
+// impl From<&utf8streamreader::errors::Error> for Error {
+//     fn from(value: &utf8streamreader::errors::Error) -> Self {
+//         match value {
+//             utf8streamreader::errors::Error::IoError(error) => Self {
+//                 kind: ErrorKind::IoError,
+//                 message: Some(error.to_string()),
+//                 #[cfg(test)]
+//                 backtrace: Backtrace::force_capture(),
+//             },
+//             utf8streamreader::errors::Error::EofError => Error {
+//                 kind: ErrorKind::EoFError,
+//                 message: Some("EOF reached".to_string()),
+//                 #[cfg(test)]
+//                 backtrace: Backtrace::force_capture(),
+//             },
+//             utf8streamreader::errors::Error::Other(s) => Error::read_error(s.clone()),
+//             utf8streamreader::errors::Error::Utf8Error(s) => Error::read_error(s.clone()),
+//         }
+//     }
+// }
 
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
@@ -110,26 +123,26 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<utf8streamreader::errors::Error> for Error {
-    fn from(value: utf8streamreader::errors::Error) -> Self {
-        match value {
-            utf8streamreader::errors::Error::IoError(error) => Self {
-                kind: ErrorKind::IoError,
-                message: Some(error.to_string()),
-                #[cfg(test)]
-                backtrace: Backtrace::capture(),
-            },
-            utf8streamreader::errors::Error::EofError => Error {
-                kind: ErrorKind::EoFError,
-                message: Some("EOF reached".to_string()),
-                #[cfg(test)]
-                backtrace: Backtrace::capture(),
-            },
-            utf8streamreader::errors::Error::Other(s) => Error::read_error(s.clone()),
-            utf8streamreader::errors::Error::Utf8Error(s) => Error::read_error(s.clone()),
-        }
-    }
-}
+// impl From<utf8streamreader::errors::Error> for Error {
+//     fn from(value: utf8streamreader::errors::Error) -> Self {
+//         match value {
+//             utf8streamreader::errors::Error::IoError(error) => Self {
+//                 kind: ErrorKind::IoError,
+//                 message: Some(error.to_string()),
+//                 #[cfg(test)]
+//                 backtrace: Backtrace::capture(),
+//             },
+//             utf8streamreader::errors::Error::EofError => Error {
+//                 kind: ErrorKind::EoFError,
+//                 message: Some("EOF reached".to_string()),
+//                 #[cfg(test)]
+//                 backtrace: Backtrace::capture(),
+//             },
+//             utf8streamreader::errors::Error::Other(s) => Error::read_error(s.clone()),
+//             utf8streamreader::errors::Error::Utf8Error(s) => Error::read_error(s.clone()),
+//         }
+//     }
+// }
 
 impl From<clap::Error> for Error {
     fn from(value: clap::Error) -> Self {
@@ -149,6 +162,11 @@ impl From<ParseIntError> for Error {
 }
 impl From<Utf8Error> for Error {
     fn from(value: Utf8Error) -> Self {
+        Self::new_with_message(ErrorKind::ParseError, value.to_string())
+    }
+}
+impl From<DecodeUtf16Error> for Error {
+    fn from(value: DecodeUtf16Error) -> Self {
         Self::new_with_message(ErrorKind::ParseError, value.to_string())
     }
 }

@@ -55,13 +55,10 @@ impl TryFrom<Config> for State {
             },
         );
         let mut input_text_streams = HashMap::new();
-        input_text_streams.insert(0, SourceReader::new(Reader::StdIn));
+        input_text_streams.insert(0, SourceReader::new(Reader::std_in()));
 
         Ok(State {
-            sources: vec![SourceReader::new(Reader::File {
-                name: value.source.clone(),
-                file: File::open(value.source)?,
-            })],
+            sources: vec![SourceReader::new(Reader::try_from(value.source)?)],
             result: Writer::File {
                 name: result_path.clone(),
                 writer: File::create(result_path)?,
@@ -91,14 +88,11 @@ impl State {
         }
         Err(Error::new(crate::error::ErrorKind::EoFError))
     }
-    fn character_lookahead(
-        &mut self,
-        nchars: usize,
-    ) -> Option<Result<(char, CharacterCategory), Error>> {
+    fn character_lookahead(&mut self) -> Option<Result<(char, CharacterCategory), Error>> {
         if let Some(source) = self.sources.last_mut() {
-            return match source.lookahead(nchars - 1) {
-                Some(Ok(c)) => Some(Ok((c, self.group_states.get_category(c)))),
-                Some(Err(e)) => Some(Err(e)),
+            return match source.lookahead() {
+                Some(Ok(c)) => Some(Ok((*c, self.group_states.get_category(*c)))),
+                Some(Err(e)) => Some(Err(e.clone())),
                 None => None,
             };
         } else {
@@ -123,13 +117,13 @@ impl State {
         let (c, cat) = self.character_consume()?;
         s.push(c);
         if cat == CharacterCategory::Letter {
-            while let Some(Ok((c, CharacterCategory::Letter))) = self.character_lookahead(1) {
+            while let Some(Ok((c, CharacterCategory::Letter))) = self.character_lookahead() {
                 s.push(c);
                 self.character_consume()?;
             }
         }
 
-        while let Some(Ok((_, CharacterCategory::Space))) = self.character_lookahead(1) {
+        while let Some(Ok((_, CharacterCategory::Space))) = self.character_lookahead() {
             let _ = self.character_consume();
         }
 
@@ -155,7 +149,7 @@ impl State {
             CharacterCategory::Parameter => return self.get_parameter(),
             CharacterCategory::Ignored => return self.get_token(),
             CharacterCategory::Space => {
-                while let Some(Ok((_, CharacterCategory::Space))) = self.character_lookahead(1) {
+                while let Some(Ok((_, CharacterCategory::Space))) = self.character_lookahead() {
                     let _ = self.character_consume();
                 }
                 return Ok(Token::Character(chr, CharacterCategory::Space));
@@ -213,7 +207,7 @@ impl State {
     }
     fn get_parameter(&mut self) -> Result<Token, Error> {
         let mut s = String::new();
-        while let Some(Ok((c @ '0'..='9', _))) = self.character_lookahead(1) {
+        while let Some(Ok((c @ '0'..='9', _))) = self.character_lookahead() {
             s.push(c);
             self.character_consume()?;
         }

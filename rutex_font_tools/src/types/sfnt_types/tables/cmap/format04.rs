@@ -17,6 +17,7 @@ impl From<(((u16, u16), u16), u16)> for CMapSegment {
         }
     }
 }
+#[derive(Clone)]
 pub struct CMAPSubTable4 {
     segments: Vec<CMapSegment>,
     data: Vec<u16>,
@@ -47,7 +48,7 @@ impl CMAPSubTable4 {
         }
     }
 }
-impl SubTableTrait<u16> for CMAPSubTable4 {
+impl SubTableReadableTrait<u16> for CMAPSubTable4 {
     fn read(data: &[u8], extrainfo: &CmapSubTablePrelim) -> Result<Self, Box<dyn Error>> {
         let mut cursor = Cursor::new(&data);
         if cfg!(test) {
@@ -143,5 +144,13 @@ impl SubTableTrait<u16> for CMAPSubTable4 {
             }
         }
         result
+    }
+
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>) {
+        map.extend(
+            SubTableReadableTrait::<u16>::get_mapping(self)
+                .into_iter()
+                .map(|(a, b)| (a as u32, b as u32)),
+        )
     }
 }

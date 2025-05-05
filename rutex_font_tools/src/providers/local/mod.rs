@@ -5,6 +5,7 @@ impl FontProvider for LocalProvider {
     type Criteria = <FileProvider as FontProvider>::Criteria;
 
     type FontReference = <FileProvider as FontProvider>::FontReference;
+    const NAME: &str = "local";
 
     fn new(cfg: &crate::config::Config) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self(FileProvider::try_new([cfg

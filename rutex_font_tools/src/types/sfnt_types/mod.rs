@@ -9,7 +9,7 @@ use std::{
 };
 
 use index::{SFNTError, SFNTHeader, TableReference, TableTagInner};
-use tables::{DependentSFNTTable, SFNTTable};
+use tables::{DependentSFNTTable, SFNTTable, cmap::CMAPTable};
 pub mod index;
 
 #[derive(Clone, Copy)]
@@ -157,6 +157,7 @@ pub struct SFNTFile {
     pub file: File,
     pub table_cache: BTreeMap<[u8; 4], Box<dyn SFNTTable>>,
 }
+
 impl TryFrom<File> for SFNTFile {
     type Error = Box<dyn Error>;
     fn try_from(mut file: File) -> Result<Self, Self::Error> {
@@ -169,6 +170,18 @@ impl TryFrom<File> for SFNTFile {
     }
 }
 impl SFNTFile {
+    pub(crate) fn seek_table_optional(
+        &mut self,
+        tags: &[&TableTagInner],
+    ) -> Result<Option<TableReference>, Box<dyn Error>> {
+        for a in tags {
+            if let Some(b) = self.header.tables.get(a) {
+                self.file.seek(std::io::SeekFrom::Start(b.offset as u64))?;
+                return Ok(Some(b));
+            }
+        }
+        Ok(None)
+    }
     pub(crate) fn seek_table(
         &mut self,
         tags: &[&TableTagInner],
@@ -202,13 +215,31 @@ impl SFNTFile {
         let v = self.table_cache.get(tag).unwrap().as_ref() as &dyn Any;
         Ok(v.downcast_ref::<T>().unwrap())
     }
+    pub fn get_table_optional<T: DependentSFNTTable>(
+        &mut self,
+    ) -> Result<Option<&T>, Box<dyn Error>> {
+        let tag = *T::TAGS.first().unwrap();
+        let contains = self.table_cache.contains_key(tag);
+        if !contains {
+            let table = T::read_option(self)?;
+            if let Some(table) = table {
+                self.table_cache
+                    .insert(*tag, Box::new(table) as Box<dyn SFNTTable>);
+            } else {
+                return Ok(None);
+            }
+        }
+
+        let v = self.table_cache.get(tag).unwrap().as_ref() as &dyn Any;
+        Ok(Some(v.downcast_ref::<T>().unwrap()))
+    }
 
     #[inline(always)]
     fn get_table_reference(&self, tag: &[u8; 4]) -> Option<TableReference> {
         self.header.tables.get(tag)
     }
 
-    fn get_table_reference_error(&self, tag: &[u8; 4]) -> Result<TableReference, SFNTError> {
+    pub fn get_table_reference_error(&self, tag: &[u8; 4]) -> Result<TableReference, SFNTError> {
         self.header.tables.get(tag).ok_or_else(|| {
             SFNTError::SomethingIsNotFound("Table", str::from_utf8(tag).unwrap().to_string())
         })
@@ -233,6 +264,11 @@ impl SFNTFile {
                     .unwrap_or("".to_string()),
             ),
         ))
+    }
+    pub fn get_mapping(&mut self, chr: char) -> Result<u16, Box<dyn Error>> {
+        let table = self.get_table::<CMAPTable>()?;
+
+        todo!()
     }
 }
 pub mod tables;
@@ -262,6 +298,7 @@ pub mod test {
         error::Error,
         fs::{File, OpenOptions},
         io::Seek,
+        path::PathBuf,
         time::Instant,
     };
 
@@ -273,14 +310,17 @@ pub mod test {
         types::sfnt_types::{
             index::{SFNTError, TableTag},
             tables::{
-                DependentSFNTTable, cmap::CMAPTable, hmtx::HorizontalMetrics,
+                DependentSFNTTable, cmap::CMAPTable, hmtx::HorizontalMetrics, kern::KerningTable,
                 maxp::MemoryManagementTable, post::PostTable,
             },
         },
     };
+    fn get_config() -> Config {
+        Config::new("./temp_dir")
+    }
     fn get_fonts()
     -> Result<Vec<crate::providers::filebasedprovider::FileFontReference>, Box<dyn Error>> {
-        let mut provider = OSProvider::new(&Config::default())?;
+        let mut provider = OSProvider::new(&get_config())?;
         provider.find_fonts(&())
     }
     #[test]
@@ -324,12 +364,12 @@ pub mod test {
     #[allow(clippy::all)]
     #[test]
     fn single_test() -> Result<(), Box<dyn Error>> {
-        let name = "/System/Library/Fonts/Supplemental/NISC18030.ttf";
+        let name = "/System/Library/Fonts/Supplemental/Trebuchet MS Italic.ttf";
         let file = OpenOptions::new().read(true).open(name)?;
         eprintln!("{name:?}");
         // let start = Instant::now();
         let mut sfntfile: SFNTFile = file.try_into()?;
-        let table: &HorizontalMetrics = match sfntfile.get_table() {
+        let table: &KerningTable = match sfntfile.get_table() {
             Ok(a) => a,
             Err(e) => return Err(e),
         };
@@ -337,30 +377,18 @@ pub mod test {
     }
     #[test]
     fn alltest() -> Result<(), Box<dyn Error>> {
-        let mut provider = OSProvider::new(&Config::default())?;
+        let mut provider = OSProvider::new(&get_config())?;
         // let mut set = BTreeSet::new();
         for a in provider.find_fonts(&())? {
             let name = a.get_font(&())?;
             let file = OpenOptions::new().read(true).open(&name)?;
-            eprintln!("{name:?}");
+            // eprintln!("{name:?}");
             // let start = Instant::now();
             let mut sfntfile: SFNTFile = file.try_into()?;
-            let table: &MemoryManagementTable = match sfntfile.get_table() {
-                Ok(a) => a,
-                Err(e) => {
-                    return Err(if e.is::<SFNTError>() {
-                        let mut error: SFNTError = *e.downcast().unwrap();
-                        if let SFNTError::SomethingIsNotFound("Table", ref s) = error {
-                            if &MemoryManagementTable::tags_to_string() == s {
-                                continue;
-                            }
-                        }
-                        dbg!(sfntfile.header);
-                        Box::new(error) as Box<dyn Error>
-                    } else {
-                        e
-                    });
-                }
+            let table: &KerningTable = match sfntfile.get_table_optional() {
+                Ok(Some(a)) => a,
+                Ok(None) => continue,
+                Err(e) => return Err(e),
             };
         }
         // set.remove(&TableTag(*b"NAME"));

@@ -3,15 +3,26 @@ name = "rutex_font_tools"
 version = "0.1.0"
 edition = "2024"
 
+
+[[bin]]
+path = "src/bin/get_word_width.rs"
+required-features = ["online_fonts", "os_fonts", "clap"]
+name = "get_word_width"
+
 [lints.rust]
 unexpected_cfgs = "allow"
 
 [features]
-google_fonts = ["reqwest", "serde", "serde_json"]
+temp_dir = []
+google_fonts = ["online_fonts", "serde", "serde_json", "temp_dir"]
 os_fonts = []
+online_fonts = ["reqwest", "temp_dir"]
+clap = ["dep:clap"]
+
 
 [dependencies]
 chrono = "0.4.40"
+clap = { version = "4.5.37", features = ["derive"], optional = true }
 easybitflags = "0.2.0"
 regex = "1.11.1"
 reqwest = { version = "0.12.15", optional = true, features = [
@@ -21,6 +32,3 @@ reqwest = { version = "0.12.15", optional = true, features = [
 serde = { version = "1.0.219", optional = true, features = ["derive"] }
 serde_json = { version = "1.0.140", optional = true }
 thiserror = "2.0.12"
-
-
-[dev-dependencies]

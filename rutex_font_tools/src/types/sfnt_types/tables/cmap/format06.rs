@@ -1,9 +1,10 @@
 use super::*;
+#[derive(Clone)]
 pub struct CMAPSubTable6 {
     range: Range<u16>,
     index_array: Vec<u16>,
 }
-impl SubTableTrait<u16> for CMAPSubTable6 {
+impl SubTableReadableTrait<u16> for CMAPSubTable6 {
     fn read(data: &[u8], extrainfo: &CmapSubTablePrelim) -> Result<Self, Box<dyn Error>> {
         let mut cursor = Cursor::new(data);
         if cfg!(test) {
@@ -36,5 +37,14 @@ impl SubTableTrait<u16> for CMAPSubTable6 {
 
     fn get_mapping(&self) -> BTreeMap<u16, u16> {
         BTreeMap::from_iter(self.range.clone().zip(self.index_array.iter().copied()))
+    }
+
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>) {
+        map.extend(
+            self.range
+                .clone()
+                .zip(self.index_array.iter().copied())
+                .map(|(a, b)| (a as u32, b as u32)),
+        );
     }
 }

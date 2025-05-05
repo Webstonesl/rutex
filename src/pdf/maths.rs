@@ -4,7 +4,7 @@ use std::iter::Sum;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ErrorKind {
     DivideByZero,
 }

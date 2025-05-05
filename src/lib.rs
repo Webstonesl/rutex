@@ -1,4 +1,6 @@
 #![feature(str_internals)]
+#![feature(array_chunks)]
+#![feature(slice_as_array)]
 #![allow(internal_features)]
 pub(crate) mod config;
 pub mod error;

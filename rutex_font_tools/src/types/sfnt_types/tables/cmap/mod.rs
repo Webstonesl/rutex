@@ -6,17 +6,13 @@ use super::super::SFNTStream;
 use super::name::{PlatformID, macintosh};
 use super::{ReadableSFNTTable, SFNTTable};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::Debug;
 use std::io::{Cursor, Read, Seek};
-use std::num::NonZeroU16;
-use std::ops::{Add, BitAnd, Range, RangeBounds, RangeInclusive, Sub};
+use std::ops::{Add, Range, RangeInclusive, Sub};
 impl PlatformID {
-    pub fn read_cmap<R: Read + Seek>(
-        &self,
-        mut read: &mut R,
-    ) -> Result<PlatformCmap, Box<dyn Error>> {
+    pub fn read_cmap<R: Read + Seek>(&self, read: &mut R) -> Result<PlatformCmap, Box<dyn Error>> {
         match self {
             PlatformID::Unicode => Ok(PlatformCmap::Unicode(read.get_prim()?)),
             PlatformID::Macintosh => Ok(PlatformCmap::Macintosh(
@@ -35,28 +31,14 @@ pub enum PlatformCmap {
     Microsoft(macintosh::ScriptCode),
 }
 #[derive(Clone)]
-pub struct CMAPTable(Vec<u8>, Vec<CmapSubTablePrelim>);
-
-impl CMAPTable {
-    #[cfg(test)]
-    pub fn count_elements(&self) -> BTreeMap<u16, usize> {
-        let mut map = BTreeMap::new();
-        for a in self.1.iter().map(|a| a.format) {
-            if let Some(b) = map.get_mut(&a) {
-                *b += 1;
-            } else {
-                map.insert(a, 1usize);
-            }
-        }
-        map
-    }
-    pub fn get_mappings(&self) -> Result<(), Box<dyn Error>> {
-        for p in &self.1 {
-            p.read_data(&self.0)?;
-        }
-        Ok(())
+pub struct CMAPTable(BTreeMap<u32, u32>);
+impl AsRef<BTreeMap<u32, u32>> for CMAPTable {
+    fn as_ref(&self) -> &BTreeMap<u32, u32> {
+        &self.0
     }
 }
+
+impl CMAPTable {}
 impl SFNTTable for CMAPTable {
     fn into(self) -> super::AnySFNTTable {
         super::AnySFNTTable::CharacterMap(Box::new(self))
@@ -105,15 +87,6 @@ pub enum Range_<Idx: Ord + Copy + Step> {
     None,
 }
 
-impl<Idx: Ord + Copy + Step> Range_<Idx> {
-    fn contains(&self, x: &Idx) -> bool {
-        match self {
-            Range_::Range(a, b) => a <= x && x < b,
-            Range_::Singular(b) => x == b,
-            Range_::None => false,
-        }
-    }
-}
 impl<Idx: Ord + Copy + Step> From<Idx> for Range_<Idx> {
     fn from(value: Idx) -> Self {
         Range_::Singular(value)
@@ -198,23 +171,26 @@ impl ReadableSFNTTable for CMAPTable {
         let other_offset = read.stream_position().unwrap();
         let mut data = vec![0u8; length as usize - ((other_offset - initial_offset) as usize)];
         read.read_exact(&mut data)?;
-        let mut cursor = Cursor::new(data);
-        let mut result = Vec::new();
+        let mut cursor = Cursor::new(&data);
+        let mut map = BTreeMap::new();
         for (platform, offset) in v {
             let offset = offset + initial_offset - other_offset;
             cursor.set_position(offset);
-            result.push(
-                match _CmapSubTablePrelim::read_from(&mut cursor) {
-                    Ok(a) => a,
-                    Err(b) => match b.downcast_ref::<SFNTError>() {
-                        Some(SFNTError::InvalidCMAPTable(_)) => continue,
-                        _ => return Err(b),
-                    },
-                }
-                .with(platform, offset as usize),
-            );
+            if let Some(data) = match _CmapSubTablePrelim::read_from(&mut cursor) {
+                Ok(a) => a,
+                Err(b) => match b.downcast_ref::<SFNTError>() {
+                    Some(SFNTError::InvalidCMAPTable(_)) => continue,
+                    _ => return Err(b),
+                },
+            }
+            .with(platform, offset as usize)
+            .read_data(&data)?
+            {
+                data.write_into(&mut map);
+            }
         }
-        Ok(CMAPTable(cursor.into_inner(), result))
+
+        Ok(CMAPTable(map))
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -241,20 +217,39 @@ pub struct CmapSubTablePrelim {
     pub range: Range<usize>,
     pub language: u16,
 }
-type Glyph = Option<NonZeroU16>;
 impl CmapSubTablePrelim {
-    fn read_data(&self, data: &[u8]) -> Result<CMAPSubTable, Box<dyn Error>> {
+    fn read_data(&self, data: &[u8]) -> Result<Option<CMAPSubTable>, Box<dyn Error>> {
         // let glyph_index_address = id_range_offset[i] + 2 * (c - start_code[i]) + 2 * i;
-        CMAPSubTable::read(&data[self.range.clone()], self)
+        CMAPSubTable::read_no_err(&data[self.range.clone()], self)
     }
 }
+pub trait SubTableTrait<Input: Ord + Copy + Into<u32>> {
+    fn get_element(&self, c: &Input) -> u16;
+    fn get_mapping(&self) -> BTreeMap<Input, u16>;
+    fn write_into(&self, vec: &mut BTreeMap<u32, u32>);
+}
 
-pub trait SubTableTrait<Input: Ord + Copy>: Sized {
+pub(crate) trait SubTableReadableTrait<Input: Ord + Copy + Into<u32>>:
+    Sized + Clone
+{
     fn read(data: &[u8], extrainfo: &CmapSubTablePrelim) -> Result<Self, Box<dyn Error>>;
     fn get_element(&self, c: &Input) -> u16;
     fn get_mapping(&self) -> BTreeMap<Input, u16>;
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>);
 }
+impl<Input: Ord + Copy + Into<u32>, T: SubTableReadableTrait<Input>> SubTableTrait<Input> for T {
+    fn get_element(&self, c: &Input) -> u16 {
+        SubTableReadableTrait::get_element(self, c)
+    }
 
+    fn get_mapping(&self) -> BTreeMap<Input, u16> {
+        SubTableReadableTrait::get_mapping(self)
+    }
+
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>) {
+        SubTableReadableTrait::write_into(self, map);
+    }
+}
 impl SFNTReadable for _CmapSubTablePrelim {
     fn read_from<R: Read + ?Sized + Seek>(mut read: &mut R) -> Result<Self, Box<dyn Error>> {
         let format: u16 = read.get_prim()?;
@@ -287,7 +282,8 @@ impl SFNTReadable for _CmapSubTablePrelim {
     }
 }
 
-pub enum CMAPSubTable {
+#[derive(Clone)]
+enum CMAPSubTable {
     Format0(format00::CMAPSubTable0),
     Format4(format04::CMAPSubTable4),
     Format6(format06::CMAPSubTable6),
@@ -295,26 +291,48 @@ pub enum CMAPSubTable {
     Format13(format13::CMAPSubTable13),
 }
 impl CMAPSubTable {
-    fn read(data: &[u8], extrainfo: &CmapSubTablePrelim) -> Result<Self, Box<dyn Error>> {
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>) {
+        match self {
+            CMAPSubTable::Format0(cmapsub_table) => {
+                SubTableReadableTrait::write_into(cmapsub_table, map)
+            }
+            CMAPSubTable::Format4(cmapsub_table) => {
+                SubTableReadableTrait::write_into(cmapsub_table, map)
+            }
+            CMAPSubTable::Format6(cmapsub_table) => {
+                SubTableReadableTrait::write_into(cmapsub_table, map)
+            }
+            CMAPSubTable::Format12(cmapsub_table) => {
+                SubTableReadableTrait::write_into(cmapsub_table, map)
+            }
+            CMAPSubTable::Format13(cmapsub_table) => {
+                SubTableReadableTrait::write_into(cmapsub_table, map)
+            }
+        }
+    }
+    fn read_no_err(
+        data: &[u8],
+        extrainfo: &CmapSubTablePrelim,
+    ) -> Result<Option<Self>, Box<dyn Error>> {
         match extrainfo.format {
-            0 => Ok(Self::Format0(format00::CMAPSubTable0::read(
+            0 => Ok(Some(Self::Format0(format00::CMAPSubTable0::read(
                 data, extrainfo,
-            )?)),
-            4 => Ok(Self::Format4(format04::CMAPSubTable4::read(
+            )?))),
+            4 => Ok(Some(Self::Format4(format04::CMAPSubTable4::read(
                 data, extrainfo,
-            )?)),
-            6 => Ok(Self::Format6(format06::CMAPSubTable6::read(
+            )?))),
+            6 => Ok(Some(Self::Format6(format06::CMAPSubTable6::read(
                 data, extrainfo,
-            )?)),
-            12 => Ok(Self::Format12(format12::CMAPSubTable12::read(
+            )?))),
+            12 => Ok(Some(Self::Format12(format12::CMAPSubTable12::read(
                 data, extrainfo,
-            )?)),
-            13 => Ok(Self::Format13(format13::CMAPSubTable13::read(
+            )?))),
+            13 => Ok(Some(Self::Format13(format13::CMAPSubTable13::read(
                 data, extrainfo,
-            )?)),
+            )?))),
 
-            a @ (1 | 3 | 5 | 7 | 9 | 11 | 15..) => Err(SFNTError::InvalidCMAPTable(a).into()),
-            a => Err(SFNTError::not_yet_implemented(format!("CMAP subtable format {a}")).into()),
+            1 | 3 | 5 | 7 | 9 | 11 => Ok(None),
+            a => Err(SFNTError::InvalidCMAPTable(a).into()),
         }
     }
 }

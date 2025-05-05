@@ -1,8 +1,6 @@
 use core::str::utf8_char_width;
-use std::{collections::HashMap, iter::Map, ops::Range, str::FromStr, usize};
+use std::{collections::HashMap, ops::Range, panic:: catch_unwind, str::FromStr, usize};
 
-use regex::Regex;
-use utf8streamreader::utf;
 
 use crate::error::{Error, ErrorKind};
 
@@ -74,46 +72,74 @@ enum Delimiter {
     EndDict,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 enum Keyword {
     KwObj,
     KwEndObj,
+    InUseEntry,
+    FreeEntry,
+    Xref,
+    Trailer,
+    Startxref,
+    ObjectReference,
+    EndStream,
+    Stream,
+
+
 }
 
 #[derive(Debug)]
 enum PDFToken {
-    Name(Range<usize>),
-    Number(Range<usize>),
+    Comment,
+    Name(String),
+    Integer(i64),
+    Float(f64),
     Regular(Range<usize>),
     Stream(Range<usize>),
     Delimiter(Delimiter),
+    Dictionary(Vec<(PDFToken,PDFToken)>),
+    Keyword(Keyword),
     EndOfLine,
     WhiteSpace,
     PDFVersion(u8,u8),
     EndOfFile,
+    String(Vec<u8>),
 }
 
 struct PDFObjectParserLexer<'a> {
     v: &'a [u8],
     current_location: usize,
+    stack: Vec<PDFToken>,
 }
 impl<'a> PDFObjectParserLexer<'a> {
     fn new(data: &'a [u8]) -> Self {
         Self {
             v: data,
             current_location: 0,
+            stack:Vec::new(),
         }
     }
     
-    fn read_character_at(&self,mut offset:usize) -> (usize,Result<char,u8>)  {
+    fn read_character_at(&self,offset:usize) -> (usize,Result<char,u8>)  {
 
         let s = utf8_char_width(self.v[offset]);
+        if s == 0 {
+            return (s,Err(self.v[offset]))
+        }
+        
         let v = match str::from_utf8(&self.v[offset..offset+s]) {
             Err(_) => return (1,Err(self.v[offset])),
             Ok(a) => a,
         };
 
-        (s,Ok(v.chars().nth(0).unwrap()))
+
+        (s,Ok(
+            match catch_unwind(|| v.chars().nth(0).unwrap()) {
+                Ok(a) =>a,
+                Err(e) => {
+                    panic!("{:08b} s = {s:?}; v= {v:?} bytes = {:?}",&self.v[offset], &self.v[offset..offset+s]);
+                }
+            }))
     }
     
 
@@ -128,7 +154,7 @@ impl<'a> PDFObjectParserLexer<'a> {
             Ok(']') => PDFToken::Delimiter(Delimiter::EndArray),
             Ok('{') => PDFToken::Delimiter(Delimiter::Lcurly),
             Ok('}') => PDFToken::Delimiter(Delimiter::Rcurly),
-            Ok('\\') => PDFToken::Delimiter(Delimiter::BeginName),
+            Ok('/') => PDFToken::Delimiter(Delimiter::BeginName),
             Ok('<') => if let (s,Ok('<')) = self.read_character_at(self.current_location+offset+i) {
                 i += s+1;
                     PDFToken::Delimiter(Delimiter::BeginDict)
@@ -158,7 +184,7 @@ impl<'a> PDFObjectParserLexer<'a> {
                 while let (s,Ok('\u{1}'..='\u{8}' | '\u{b}' | '\u{e}'..='\u{1f}' | '!'..='$' | '&'..='\''
             | '*'..=';' | '=' | '?'..='Z' | '^'..='z' | '|' | '~' ..= '\u{10ffff}')) =self.read_character_at(self.current_location+i+offset) {
                 
-                i+= s + 1;
+                i+= s ;
             } 
             PDFToken::Regular(self.current_location+offset..self.current_location+i+offset)
                 
@@ -169,34 +195,96 @@ impl<'a> PDFObjectParserLexer<'a> {
         };
         Ok((v,i))
     }
-    fn _get_token(&self) -> Result<(PDFToken,usize), Error> {
+    fn __get_token(&self) -> Result<(PDFToken,usize), Error> {
         return self._get_token_at(0);
     }
-    fn match_keyword(&self,range:Range<usize>) -> Result<PDFToken,Error> {
-        let b = &[b""];
-        dbg!(range);
+    fn match_number(&self, range:Range<usize>) -> Option<PDFToken> {
+        let s = match str::from_utf8(&self.v[range.clone()]) {
+            Ok(s) => s,
+            Err(_) => return None,
+        };
+        if let Ok(v) = s.parse() {
+            return Some(PDFToken::Integer(v));
+        }
+        if let Ok(v) = s.parse() {
+            return Some(PDFToken::Float(v));
+        }
+        return None;
 
-        todo!()
 
     }
 
-    fn get_token(&mut self) -> Option<Result<PDFToken, Error>> {
-        let (token,size) =  match self._get_token() {
+    fn match_keyword(&self,range:Range<usize>) -> Option<Keyword> {
+        let b = &[(Keyword::KwEndObj, "endobj"),(Keyword::KwObj, "obj"),
+    (Keyword::InUseEntry,"n"),
+    (Keyword::FreeEntry,"f"),
+    (Keyword::Xref,"xref"),
+    (Keyword::Trailer,"trailer"),
+    (Keyword::Startxref,"startxref"),
+    (Keyword::ObjectReference, "R"),
+    (Keyword::Stream, "stream"),
+    (Keyword::EndStream, "endstream"),
+        ];
+        let v = &self.v[range];
+        for (r,a) in b.iter() {
+            if v.starts_with(a.as_bytes()) {
+                return Some(*r);
+            }
+        }
+        None
+    }
+    #[inline(always)]
+    fn _preprocessor(&mut self,token:PDFToken, size:usize) -> Result<PDFToken,Error> {
+        match token {
+            PDFToken::Delimiter(Delimiter::PercentSign) => return self.skip_comment(),
+            PDFToken::Delimiter(Delimiter::BeginName) => { return self.read_name()},
+            PDFToken::Delimiter(Delimiter::BeginHexStr) => { return self.read_hex_string()}
+            PDFToken::Regular(range) => if let Some(e) = self.match_keyword(range.clone()) {
+                     Ok(PDFToken::Keyword(e))
+                    } else if let Some(t) = self.match_number(range.clone()){
+                        Ok(t)
+                    } else {
+                        Err(Error::new_with_message(ErrorKind::PdfParseIllegalSymbol,
+                            format!("{:?} {:?} {:?}",&range,&self.v[range.clone()], str::from_utf8(&self.v[range.clone()]))))
+                    }
+            a => Ok(a)
+        }
+
+
+    }
+
+    fn get_token(&mut self) -> Option<Result<(), Error>> {
+        let (token,size) =  match self.__get_token() {
             Ok(a) => a,
             Err(e) => return Some(Err(e)),
         };
-        match token {
-            PDFToken::Delimiter(Delimiter::PercentSign) => return Some(self.skip_comment()),
-                       PDFToken::Name(_) => todo!(),
-            PDFToken::Number(_) => todo!(),
-            PDFToken::Regular(range) => Some(self.match_keyword(range)),
-            PDFToken::Stream(range) => todo!(),
-            PDFToken::Delimiter(delimiter) => todo!(),
-            PDFToken::EndOfLine => todo!(),
-            PDFToken::WhiteSpace => todo!(),
-            PDFToken::PDFVersion(_, _) => todo!(),
+        self.current_location += size;
+        let token = match self._preprocessor(token,size) {
+            Ok(a) => a,
+            Err(e) => return  Some(Err(e))
+
+        };
+        let v = match token  {
+            PDFToken::Comment => {return self.get_token()},
+            PDFToken::Keyword(Keyword::Stream) => {self.current_location+=size; Some(self.read_stream())}
+            PDFToken::EndOfLine => {
+                        return self.get_token();
+                    },
+            PDFToken::WhiteSpace => {
+                        return self.get_token();
+                    },
             PDFToken::EndOfFile => return None,
+            t => Some(Ok(t)),
+        };
+        match v {
+            Some(Ok(t)) => {self.stack.push(t); Some(Ok(()))},
+            Some(Err(e)) =>   Some(Err(e)),
+            None=>  None
         }
+    }
+    pub fn parse() {
+
+
     }
     
     fn skip_comment(&mut self) -> Result<PDFToken,Error> {
@@ -211,14 +299,17 @@ impl<'a> PDFObjectParserLexer<'a> {
         eprintln!("{:?}",&self.v[self.current_location..(self.current_location+i)]); 
         let v = match str::from_utf8( &self.v[self.current_location..(self.current_location+i)]) {
             Ok(v) => v,
-            Err(e) => return Err(e.into()),
+            Err(_) => {
+                self.current_location += i;
+                return Ok(PDFToken::WhiteSpace);
+            },
         };
         if v.trim() == "%% EOF" {
             return Ok(PDFToken::EndOfFile);
         };
         
         if self.current_location == 0 {
-        self.current_location += i+1;
+        self.current_location += i;
             let regex = regex::Regex::new(r"^%PDF-(\d).(\d)").unwrap();
             let c = regex.captures(v);
             if let Some(result) = c {
@@ -226,12 +317,68 @@ impl<'a> PDFObjectParserLexer<'a> {
                 return Ok(PDFToken::PDFVersion(v1, v2));
             }
         }
-        self.current_location += i+1;
+        self.current_location += i;
 
-        Ok(PDFToken::WhiteSpace)
+        Ok(PDFToken::Comment)
+    }
+    
+    fn read_name(&mut self) -> Result<PDFToken, Error> {
+        if let Ok(( PDFToken::Regular(range), s)) = self.__get_token() {
+            let s = str::from_utf8( &self.v[range.clone()])?;
+            self.current_location = range.end;
+            return Ok(PDFToken::Name(s.to_string()));
+        } else {
+            return Err(Error::new(ErrorKind::ParseError));
+        }
+    }
+    
+    fn read_hex_string(&mut self) -> Result<PDFToken, Error> {
+        let mut v = Vec::new();
+        let mut d = None;
+        loop {
+            let (s,data)= self.read_character_at(self.current_location);
+            self.current_location += s;
+            let v2: u8 = match data {
+                Ok('0') => 0,
+                Ok('1') => 1,
+                Ok('2') => 2,
+                Ok('3') => 3,
+                Ok('4') => 4,
+                Ok('5') => 5,
+                Ok('6') => 6,
+                Ok('7') => 7,
+                Ok('8') => 8,
+                Ok('9') => 9,
+                Ok('A' | 'a') => 10,
+                Ok('B' | 'b') => 11,
+                Ok('C' | 'c') => 12,
+                Ok('D' | 'd') => 13,
+                Ok('E' | 'e') => 14,
+                Ok('F' | 'f') => 15,
+                Ok('>') => if d.is_none() {break} else {
+                    return Err(Error::new_with_message(ErrorKind::ParseError, "Hexstring with uneaven amount of hex chars"));
+                },
+                Ok(a) if a.is_whitespace() => continue,
+                Ok(a) => return Err(Error::new_with_message(ErrorKind::ParseError, format!("Illegal character {:?} in hexstring",a))),
+                Err(a) => return Err(Error::new_with_message(ErrorKind::ParseError, format!("Illegal byte {:?} in hexstring",a))),
+            };
+            if let Some(v1) = d {
+                v.push((v1<<4u8)|v2);
+                d = None;
+            } else {
+                d = Some(v2);
+            }
+        };
+        dbg!(&v);
+        Ok(PDFToken::String(v))
+    }
+    
+    fn read_stream(&mut self) -> Result<PDFToken, Error> {
+        todo!()
     }
 }
 
+#[allow(clippy::never_loop)]
 #[test]
 fn test() {
     const DATA: &[&str] = &[
@@ -517,6 +664,8 @@ fn test() {
             }
 
         }
+        println!("{:?}",data);
+        break;
         
     }
 }

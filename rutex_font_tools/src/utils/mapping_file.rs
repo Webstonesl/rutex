@@ -1,16 +1,15 @@
+use regex::Regex;
+
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt::Debug,
     fs::File,
-    io::{BufRead, BufReader, Write, stdin},
-    ops::Range,
+    io::{BufRead, BufReader, Write},
     process::{self, Stdio},
     str::FromStr,
 };
-
-use regex::Regex;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum MappingError {
@@ -220,7 +219,7 @@ impl FromStr for MappingType {
         if s.starts_with('<') && s.ends_with('>') {
             return Ok(Self::Direction(Direction::from_str(&s[1..s.len() - 1])?));
         }
-        if s.starts_with(|a: char| a.is_digit(16)) {
+        if s.starts_with(|a: char| a.is_ascii_hexdigit()) {
             return Ok(Self::Unicode(UnicodeValue::from_str(s)?));
         }
         Err(MappingError::ParseError(
@@ -411,7 +410,7 @@ pub fn read_mapping_file(path: &str) -> Result<UnicodeMap, Box<dyn Error>> {
         } else {
             buffer.pop();
         }
-        let mut s: String = match buffer.is_ascii() {
+        let s: String = match buffer.is_ascii() {
             true => buffer.iter().map(|a| *a as char).collect(),
             false => {
                 println!("{line}: Not asci {:02x?}", buffer);

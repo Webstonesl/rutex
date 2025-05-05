@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::{
     any::Any,
     error::Error,
@@ -9,16 +10,14 @@ use glyf::GlyphTable;
 use head::FontHeader;
 use hhea::HorizontalHeaderTable;
 use hmtx::HorizontalMetrics;
+use kern::KerningTable;
 use loca::GlyphOffsetTable;
 use maxp::MemoryManagementTable;
 use name::NameTable;
 use os2::OS2Table;
 use post::PostTable;
 
-use super::{
-    SFNTFile,
-    index::{SFNTScalarType, TableTagInner},
-};
+use super::{SFNTFile, index::TableTagInner};
 
 pub trait SFNTTable: Any {
     fn into(self) -> AnySFNTTable;
@@ -35,6 +34,7 @@ pub enum AnySFNTTable {
     Glyphs(Box<GlyphTable>),
     GlyphOffset(GlyphOffsetTable),
     FontHeader(Box<FontHeader>),
+    KerningTable(Box<KerningTable>),
 }
 
 pub trait ReadableSFNTTable: Sized + SFNTTable {
@@ -44,6 +44,9 @@ pub trait ReadableSFNTTable: Sized + SFNTTable {
 pub trait DependentSFNTTable: Sized + SFNTTable {
     const TAGS: &[&TableTagInner];
     fn read(file: &mut SFNTFile) -> Result<Self, Box<dyn Error>>;
+    fn read_option(file: &mut SFNTFile) -> Result<Option<Self>, Box<dyn Error>> {
+        Self::read(file).map(Some)
+    }
     fn tags_to_string() -> String {
         format!(
             "[{}]",
@@ -61,6 +64,14 @@ impl<T: ReadableSFNTTable> DependentSFNTTable for T {
     fn read(file: &mut SFNTFile) -> Result<Self, Box<dyn Error>> {
         let t = file.seek_table(Self::TAGS)?;
         <Self as ReadableSFNTTable>::read(&mut file.file, t.length)
+    }
+    fn read_option(file: &mut SFNTFile) -> Result<Option<Self>, Box<dyn Error>> {
+        let t = file.seek_table_optional(Self::TAGS)?;
+        Ok(if let Some(t) = t {
+            Some(<Self as ReadableSFNTTable>::read(&mut file.file, t.length)?)
+        } else {
+            None
+        })
     }
 }
 pub enum Platform {

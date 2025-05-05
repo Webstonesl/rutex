@@ -1,6 +1,7 @@
 use super::*;
+#[derive(Clone)]
 pub struct CMAPSubTable0(Box<[u8; 256]>);
-impl SubTableTrait<u8> for CMAPSubTable0 {
+impl SubTableReadableTrait<u8> for CMAPSubTable0 {
     fn read(data: &[u8], extrainfo: &CmapSubTablePrelim) -> Result<Self, Box<dyn Error>> {
         let mut cursor = Cursor::new(data);
         if cfg!(test) {
@@ -31,5 +32,11 @@ impl SubTableTrait<u8> for CMAPSubTable0 {
         }
 
         value
+    }
+
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>) {
+        for (i, v) in self.0.iter().copied().enumerate() {
+            map.insert(i as u32, v as u32);
+        }
     }
 }

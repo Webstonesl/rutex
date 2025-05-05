@@ -66,6 +66,7 @@ impl FontProvider for FileProvider {
     type Criteria = ();
 
     type FontReference = FileFontReference;
+    const NAME: &str = "file";
 
     fn new(cfg: &crate::config::Config) -> Result<Self, Box<dyn Error>> {
         Self::try_new(cfg.additional.iter().map(|a| a.to_str().unwrap()))

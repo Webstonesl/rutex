@@ -1,6 +1,5 @@
-// #![feature(generic_const_exprs)]
+#![warn(missing_docs)]
 #![feature(slice_as_array)]
-// #![feature(core_intrinsics)]
 #![feature(maybe_uninit_uninit_array_transpose)]
 #![feature(debug_closure_helpers)]
 #![feature(maybe_uninit_array_assume_init)]

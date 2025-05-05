@@ -11,7 +11,7 @@ use thiserror::Error;
 #[derive(Clone, Debug)]
 pub struct GoogleFontsConfig {
     pub api_key: String,
-    pub temp_dir: PathBuf,
+    pub temp_dir: Arc<PathBuf>,
 }
 #[cfg(GOOGLE_API_KEY)]
 impl Default for GoogleFontsConfig {
@@ -92,6 +92,7 @@ impl FontProvider for GoogleFontProvider {
     type Criteria = GoogleFontsCriteria;
 
     type FontReference = GoogleWebFontSpec;
+    const NAME: &str = "google";
 
     fn new(cfg: &crate::config::Config) -> Result<Self, Box<dyn std::error::Error>> {
         if let Some(GoogleFontsConfig {
@@ -101,7 +102,7 @@ impl FontProvider for GoogleFontProvider {
         {
             Ok(GoogleFontProvider {
                 api_key: api_key.clone(),
-                temp_dir: Arc::new(temp_dir.clone()),
+                temp_dir: temp_dir.clone(),
             })
         } else {
             Err(Box::new(GoogleFontsError::NoGoogleApiConfig))

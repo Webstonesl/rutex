@@ -1,6 +1,8 @@
 use std::hash::Hash;
 use std::{collections::HashMap, fmt::Debug, ops::Range};
 
+static mut s_var: usize = 0;
+
 #[derive(Debug)]
 pub enum PatternMatchResult<T>
 where

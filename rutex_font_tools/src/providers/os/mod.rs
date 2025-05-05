@@ -46,6 +46,7 @@ impl FontProvider for OSProvider {
     type Criteria = <FileProvider as FontProvider>::Criteria;
 
     type FontReference = <FileProvider as FontProvider>::FontReference;
+    const NAME: &str = "os";
 
     fn new(_: &crate::config::Config) -> Result<Self, Box<dyn Error>> {
         Ok(Self(FileProvider::try_new(SEARCH_PATHS)?))

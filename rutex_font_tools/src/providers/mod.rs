@@ -10,6 +10,8 @@ pub mod filebasedprovider;
 #[cfg(feature = "google_fonts")]
 pub mod google;
 pub mod local;
+#[cfg(feature = "online_fonts")]
+pub mod online;
 #[cfg(feature = "os_fonts")]
 pub mod os;
 pub trait FontReference {
@@ -19,6 +21,7 @@ pub trait FontReference {
 pub trait FontProvider: Sized {
     type Criteria;
     type FontReference: FontReference;
+    const NAME: &str;
     fn new(cfg: &Config) -> Result<Self, Box<dyn Error>>;
     fn find_fonts(
         &mut self,

@@ -1,12 +1,14 @@
 use super::*;
+#[derive(Clone, Copy)]
 struct CmapSegment {
     range: IncRange<u32>,
     offset: u32,
 }
+#[derive(Clone)]
 pub struct CMAPSubTable12 {
     groups: Vec<CmapSegment>,
 }
-impl SubTableTrait<u32> for CMAPSubTable12 {
+impl SubTableReadableTrait<u32> for CMAPSubTable12 {
     fn read(data: &[u8], info: &CmapSubTablePrelim) -> Result<Self, Box<dyn Error>> {
         let mut cursor = Cursor::new(data);
         if cfg!(test) {
@@ -76,5 +78,14 @@ impl SubTableTrait<u32> for CMAPSubTable12 {
             map.extend(range.zip(range2))
         }
         map
+    }
+
+    fn write_into(&self, map: &mut BTreeMap<u32, u32>) {
+        for CmapSegment { range, offset } in self.groups.iter() {
+            let offset = *offset;
+            let range2 = offset..(range.len() + offset);
+            let range = range.into_range();
+            map.extend(range.zip(range2))
+        }
     }
 }

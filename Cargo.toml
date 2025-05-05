@@ -7,15 +7,24 @@ readme = "README.md"
 description = "A TeX-based parser system"
 
 
-
 [dependencies]
+num = "0.4.3"
 clap = { version = "4.5.31", features = ["derive"] }
 dyn-clone = "1.0.19"
 regex = "1.11.1"
-utf8streamreader = { git = "https://github.com/Webstonesl/rs-utf8reader", version = "0.1.0" }
-
-[dev-dependencies]
-chrono = { version = "0.4.40" }
-
-[build-dependencies]
+easybitflags = { version = "0.2.0" }
+maths_utils = { path = "./maths_utils" }
+utility_macros = { path = "./utility_macros" }
+reqwest = { version = "0.12.15", optional = true, features = [
+    "blocking",
+    "json",
+] }
+serde = { version = "1.0.219", features = ["derive"] }
 chrono = "0.4.40"
+
+
+[features]
+google_fonts = ["dep:reqwest"]
+
+[workspace]
+members = ["maths_utils", "rutex_error_handling", "rutex_font_tools", "rutex_localization", "rutex_pdf", "utility_macros", "rutex_font_tools/rutex_sfnt" ]
