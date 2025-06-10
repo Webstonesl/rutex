@@ -1,7 +1,8 @@
 use crate::{
     error::{Error, ErrorKind},
-    parser::Token,
+    parser::{CharacterCategory, Token},
     state::State,
+    writer::WriterTrait,
 };
 
 use super::{userdefined::UserDefinedMacro, MacroValue};
@@ -57,11 +58,20 @@ fn read_number(state: &mut State) -> Result<u8, Error> {
             }
         }
     }
-    return Ok(s.parse()?);
+    s.parse().map_err(Into::into)
 }
 
 pub fn write(state: &mut State) -> Result<(), Error> {
-    let nr = read_number(state)?;
+    let stream_number = dbg!(state.get_token()?);
+    loop {
+        if let Token::Character('0'..='9', _) = stream_number {}
+    }
+
+    let text = state.get_token()?;
+    match state.output_streams.get_mut(&0) {
+        Some(a) => eprintln!("{:?}", a.get_name()),
+        None => todo!("Write Output Stream Error"),
+    }
     // state.output_streams.get_mut(&nr).ok;
     todo!()
 }

@@ -1,11 +1,11 @@
-use std::{collections::HashMap, fs::File, mem};
+use std::{collections::HashMap, fs::File, io::stderr, mem};
 
 use crate::{
     error::{Error, ErrorKind},
     macros::MacroValue,
     parser::{CharacterCategory, Token},
     reader::{Reader, SourceReader},
-    writer::Writer,
+    writer::{FileWriter, NWriter, Writer},
     Config,
 };
 pub mod groupstate;
@@ -48,25 +48,22 @@ impl TryFrom<Config> for State {
         let mut output_streams = HashMap::new();
         output_streams.insert(
             0,
-            Writer::Dual {
-                name: "log".to_string(),
-                writer1: Box::new(Writer::new_file(&log_path, false)?),
-                writer2: Box::new(Writer::StdErr),
-            },
+            Writer::new(NWriter::new(
+                "log".to_string(),
+                File::create(&log_path)?,
+                stderr(),
+            )),
         );
         let mut input_text_streams = HashMap::new();
         input_text_streams.insert(0, SourceReader::new(Reader::std_in()));
 
         Ok(State {
             sources: vec![SourceReader::new(Reader::try_from(value.source)?)],
-            result: Writer::File {
-                name: result_path.clone(),
-                writer: File::create(result_path)?,
-            },
+            result: Writer::new(FileWriter::new(result_path, false)?),
             input_streams: HashMap::new(),
             input_text_streams,
             output_streams,
-            group_states: GroupStates::new(),
+            group_states: GroupStates::default(),
             group_tokens: Vec::new(),
             back_log: Vec::new(),
             expand: true,
@@ -90,11 +87,11 @@ impl State {
     }
     fn character_lookahead(&mut self) -> Option<Result<(char, CharacterCategory), Error>> {
         if let Some(source) = self.sources.last_mut() {
-            return match source.lookahead() {
+            match source.lookahead() {
                 Some(Ok(c)) => Some(Ok((*c, self.group_states.get_category(*c)))),
                 Some(Err(e)) => Some(Err(e.clone())),
                 None => None,
-            };
+            }
         } else {
             None
         }
@@ -127,8 +124,9 @@ impl State {
             let _ = self.character_consume();
         }
 
-        return Ok(Token::ControlSequence(s));
+        Ok(Token::ControlSequence(s))
     }
+
     /// parses a single token and returns it
     pub fn get_token(&mut self) -> Result<Token, Error> {
         let (chr, cat) = match self.back_log.pop() {
@@ -137,35 +135,31 @@ impl State {
             None => self.character_consume()?,
         };
         match cat {
-            CharacterCategory::Escape => return self.read_control_sequence(chr),
-            CharacterCategory::BeginGroup => {
-                return self.get_group(Token::Character(chr, cat));
-            }
+            CharacterCategory::Escape => self.read_control_sequence(chr),
+            CharacterCategory::BeginGroup => self.get_group(Token::Character(chr, cat)),
             CharacterCategory::EndGroup => {
                 self.group_tokens.push(Token::Character(chr, cat));
                 self.pop_group()?;
                 unreachable!();
             }
-            CharacterCategory::Parameter => return self.get_parameter(),
-            CharacterCategory::Ignored => return self.get_token(),
+            CharacterCategory::Parameter => self.get_parameter(),
+            CharacterCategory::Ignored => self.get_token(),
             CharacterCategory::Space => {
                 while let Some(Ok((_, CharacterCategory::Space))) = self.character_lookahead() {
                     let _ = self.character_consume();
                 }
-                return Ok(Token::Character(chr, CharacterCategory::Space));
+                Ok(Token::Character(chr, CharacterCategory::Space))
             }
-            CharacterCategory::Active => return Ok(Token::ControlSequence(chr.to_string())),
+            CharacterCategory::Active => Ok(Token::ControlSequence(chr.to_string())),
             CharacterCategory::Comment => {
                 self.skip_comment()?;
-                return self.get_token();
+                self.get_token()
             }
-            CharacterCategory::Invalid => {
-                return Err(Error::new_with_message(
-                    ErrorKind::InvalidCharacter,
-                    format!("{:?} is invalid", chr),
-                ))
-            }
-            a => return Ok(Token::Character(chr, a)),
+            CharacterCategory::Invalid => Err(Error::new_with_message(
+                ErrorKind::InvalidCharacter,
+                format!("{:?} is invalid", chr),
+            )),
+            a => Ok(Token::Character(chr, a)),
         }
     }
     /// gets a group of tokens from the sources.

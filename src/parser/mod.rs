@@ -65,17 +65,13 @@ impl CharacterMap {
         self.0.insert(chr, cat);
     }
     pub fn get(&self, chr: char) -> Option<CharacterCategory> {
-        match self.0.get(&chr) {
-            Some(a) => Some(a.clone()),
-            None => None,
-        }
+        self.0.get(&chr).cloned()
     }
-    pub fn copy(&self) -> Self {
-        let mut map = HashMap::new();
-        for (key, value) in self.0.iter() {
-            map.insert(key.clone(), value.clone());
-        }
-        return Self(map);
+}
+
+impl Default for CharacterMap {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

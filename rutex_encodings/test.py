@@ -1,0 +1,2 @@
+elp = ""
+print(repr(elp))

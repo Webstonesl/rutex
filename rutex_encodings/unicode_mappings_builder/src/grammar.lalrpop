@@ -1,0 +1,39 @@
+use crate::*;
+grammar;
+Direction_Rule: Direction = {
+    "LR" => Direction::LeftToRight,
+    "RL" => Direction::RightToLeft,
+}
+ElementValue: Value =  {
+    "<" <r:Direction_Rule> ">" => Value::Direction(r),
+    <n:Num> => Value::Number(n),
+}
+pub ElementValues: Vec<Value> =  {
+    <v:ElementValue> => vec![v],
+    <vc: ElementValues> "+" <v:ElementValue> => {let mut vc = vc; vc.push(v); vc}
+}
+pub Map:Mapping = {
+    <i:ElementValues> "\t" <o:ElementValues> "\t" => Mapping {
+        in_map:i,
+        out_map:o,
+    },
+    <i:ElementValues> "\t" "\t" => Mapping {
+        in_map:i,
+        out_map: vec![]
+    }
+}
+pub Maps: Vec<Mapping> = {
+    <v: Map> => vec![v],
+    <vc: Maps> <v:Map> => {let mut vc = vc; vc.push(v); vc}
+}
+Num: NumberValue = {
+    "0x" <s:r"[a-fA-F0-9]+"> => NumberValue::parse_value(s),
+}
+
+match {
+    r" +" => {},
+    r"#[^\n\r]*[\n\r]+" => {},
+    "\x1a" => {}
+} else {
+    _
+}

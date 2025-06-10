@@ -1,76 +1,129 @@
-use std::{fmt::Debug, fs::OpenOptions, io::Write, path::PathBuf};
+use std::{
+    fmt::Debug,
+    fs::{File, OpenOptions},
+    io::Write,
+    path::PathBuf,
+};
 
-pub enum Writer {
-    File {
-        name: PathBuf,
-        writer: std::fs::File,
-    },
-    StdOut,
-    StdErr,
-    Stream {
-        name: String,
-        writer: Box<dyn Write>,
-    },
-    Dual {
-        name: String,
-        writer1: Box<Writer>,
-        writer2: Box<Writer>,
-    },
+pub trait WriterTrait: Write {
+    fn get_name(&self) -> String;
 }
-impl Writer {
-    pub fn new_file(p: &PathBuf, append: bool) -> Result<Self, std::io::Error> {
-        Ok(Self::File {
-            name: p.clone(),
-            writer: OpenOptions::new()
+#[derive(Debug)]
+pub struct FileWriter {
+    path: PathBuf,
+    file: File,
+}
+impl FileWriter {
+    pub fn new(result_path: PathBuf, append: bool) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            path: result_path.clone(),
+            file: OpenOptions::new()
+                .append(append)
                 .create(true)
                 .write(true)
-                .append(append)
-                .open(p)?,
+                .open(result_path)?,
         })
     }
-    pub fn name(&self) -> String {
-        match self {
-            Writer::File { name, .. } => format!("{}", name.file_name().unwrap().to_str().unwrap()),
-            Writer::StdOut => "stdout".to_string(),
-            Writer::StdErr => "stderr".to_string(),
-            Writer::Stream { name, .. } => name.clone(),
-            Writer::Dual { name, .. } => name.clone(),
+}
+impl Write for FileWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.file.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+impl WriterTrait for FileWriter {
+    fn get_name(&self) -> String {
+        self.path.file_name().unwrap().to_str().unwrap().to_string()
+    }
+}
+pub struct NWriter<const N: usize> {
+    pub name: String,
+    pub children: [Box<dyn Write>; N],
+}
+impl NWriter<2> {
+    pub fn new<R1: Write + 'static, R2: Write + 'static>(name: String, r1: R1, r2: R2) -> Self {
+        Self {
+            name,
+            children: [Box::new(r1), Box::new(r2)],
         }
+    }
+}
+impl<const N: usize> Write for NWriter<N> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        for c in self.children.iter_mut() {
+            c.write_all(buf)?
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        for c in self.children.iter_mut() {
+            c.flush()?
+        }
+        Ok(())
+    }
+}
+impl<const N: usize> WriterTrait for NWriter<N> {
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+pub struct StreamWriter {
+    name: String,
+    writer: Box<dyn Write>,
+}
+impl Write for StreamWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.writer.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
+    }
+}
+impl WriterTrait for StreamWriter {
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
+}
+pub struct Writer(Box<dyn WriterTrait>);
+impl Writer {
+    pub fn new<R: WriterTrait + 'static>(result_path: R) -> Self {
+        Self(Box::new(result_path))
+    }
+}
+impl WriterTrait for Writer {
+    fn get_name(&self) -> String {
+        self.0.get_name()
     }
 }
 impl Write for Writer {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Writer::File { writer, .. } => writer.write(buf),
-            Writer::StdOut => std::io::stdout().write(buf),
-            Writer::StdErr => std::io::stderr().write(buf),
-            Writer::Stream { writer, .. } => writer.write(buf),
-            Writer::Dual {
-                writer1, writer2, ..
-            } => {
-                writer1.write(buf)?;
-                writer2.write(buf)
-            }
-        }
+        self.0.write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Writer::File { writer, .. } => writer.flush(),
-            Writer::StdOut => std::io::stdout().flush(),
-            Writer::StdErr => std::io::stderr().flush(),
-            Writer::Stream { writer, .. } => writer.flush(),
-            Writer::Dual {
-                writer1, writer2, ..
-            } => {
-                writer1.flush()?;
-                writer2.flush()
-            }
-        }
+        self.0.flush()
     }
 }
-impl Debug for Writer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Writer({})", self.name())
-    }
-}
+// pub enum Writer {
+//     File {
+//         name: PathBuf,
+//         writer: std::fs::File,
+//     },
+//     StdOut,
+//     StdErr,
+//     Stream {
+//         name: String,
+//         writer: Box<dyn Write>,
+//     },
+//     Dual {
+//         name: String,
+//         writer1: Box<Writer>,
+//         writer2: Box<Writer>,
+//     },
+// }

@@ -27,4 +27,14 @@ chrono = "0.4.40"
 google_fonts = ["dep:reqwest"]
 
 [workspace]
-members = ["maths_utils", "rutex_error_handling", "rutex_font_tools", "rutex_localization", "rutex_pdf", "utility_macros", "rutex_font_tools/rutex_sfnt" ]
+members = [
+    "maths_utils",
+    "rutex_error_handling",
+    "rutex_font_tools",
+    "rutex_localization",
+    "rutex_pdf",
+    "utility_macros",
+    "rutex_font_tools/rutex_sfnt",
+    "rutex_encodings",
+    "rutex_encodings/unicode_mappings_builder",
+]

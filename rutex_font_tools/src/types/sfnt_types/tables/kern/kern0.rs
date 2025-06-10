@@ -28,7 +28,7 @@ impl KerningSetup for Kern0 {
         source[..(source.len() - 1)]
             .iter()
             .zip(&source[1..])
-            .map(|(a, b)| ((a.to_be() as u32) << 16) | (b.to_be() as u32))
+            .map(|(a, b)| u32::from_be(((a.to_be() as u32) << 16) | (b.to_be() as u32)))
             .map(|a| *self.values.get(&a).unwrap())
             .collect()
     }

@@ -7,8 +7,6 @@ use std::{
     str::Utf8Error,
 };
 
-use crate::pdf::maths;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     IoError,
@@ -25,7 +23,6 @@ pub enum ErrorKind {
     IllegalParameter,
     DuplicateParameters,
     PatternMatchError,
-    MathsError(maths::ErrorKind),
     PdfParseUnknownKeyword,
     PdfParseUnendingStream,
     PdfParseIllegalSymbol,
@@ -33,9 +30,9 @@ pub enum ErrorKind {
     NotImplemented,
 }
 
-impl Into<Error> for ErrorKind {
-    fn into(self) -> Error {
-        Error::new(self)
+impl From<ErrorKind> for Error {
+    fn from(val: ErrorKind) -> Self {
+        Error::new(val)
     }
 }
 
@@ -79,7 +76,7 @@ impl Error {
 
     pub fn with_message(mut self, s: &str) -> Self {
         self.message = Some(s.to_string());
-        return self;
+        self
     }
 
     pub fn read_error(s: String) -> Self {
@@ -146,12 +143,12 @@ impl From<std::io::Error> for Error {
 
 impl From<clap::Error> for Error {
     fn from(value: clap::Error) -> Self {
-        return Self {
+        Self {
             kind: ErrorKind::ArgumentError,
             message: Some(value.to_string()),
             #[cfg(test)]
             backtrace: Backtrace::capture(),
-        };
+        }
     }
 }
 
@@ -189,20 +186,18 @@ impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[cfg(not(test))]
         {
-            return f
-                .debug_struct("Error")
+            f.debug_struct("Error")
                 .field("kind", &self.kind)
                 .field("message", &self.message)
-                .finish();
+                .finish()
         }
         #[cfg(test)]
         {
-            return f
-                .debug_struct("Error")
+            f.debug_struct("Error")
                 .field("kind", &self.kind)
                 .field("message", &self.message)
                 .field("backtrace", &self.backtrace)
-                .finish();
+                .finish()
         }
     }
 }

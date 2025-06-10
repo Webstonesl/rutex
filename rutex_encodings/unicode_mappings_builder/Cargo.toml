@@ -1,0 +1,11 @@
+[package]
+name = "unicode_mappings_builder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lalrpop-util = { version = "0.22.1", features = ["lexer"] }
+
+# Add a build-time dependency on the lalrpop library:
+[build-dependencies]
+lalrpop = "0.22.1"

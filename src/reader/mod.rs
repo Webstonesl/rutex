@@ -2,7 +2,7 @@ use core::str;
 use std::{
     collections::VecDeque,
     fmt::{Debug, Display},
-    io::{self, stdin, BufRead as _, BufReader, Read},
+    io::{stdin, BufRead as _, BufReader},
     iter::Peekable,
     path::PathBuf,
 };
@@ -191,22 +191,13 @@ impl Debug for SourceReader {
             .finish()
     }
 }
-struct ByteReader(Vec<u8>, usize);
-impl Read for ByteReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let otherlen = buf.len();
-        let selflen = self.0.len() - self.1;
-        let len = selflen.min(otherlen);
-        buf[..len].copy_from_slice(&self.0[self.1..(self.1 + len)]);
-        self.1 += len;
-        Ok(len)
-    }
-}
+
 #[test]
 #[allow(clippy::never_loop)]
 fn test() -> Result<(), Error> {
+    use crate::test::ByteReader;
     let a = vec![b'a', b'c', b'd', b'e', b'\n', b'a'];
-    let v = Reader::new("byte-stream", ByteReader(a, 0));
+    let v = Reader::new("byte-stream", ByteReader::new(a));
     for a in v {
         dbg!(a)?;
     }

@@ -10,35 +10,34 @@ pub struct GroupState {
     global: bool,
 }
 impl GroupState {
-    pub fn new() -> Self {
+    pub fn child(&self) -> Self {
+        Self {
+            character_map: CharacterMap::new(),
+            macro_map: MacroMap::default(),
+            global: self.global,
+        }
+    }
+}
+
+impl Default for GroupState {
+    fn default() -> Self {
         Self {
             character_map: CharacterMap::new_and_init(),
             macro_map: MacroMap::new_and_init(),
             global: false,
         }
     }
-    pub fn child(&self) -> Self {
-        return Self {
-            character_map: CharacterMap::new(),
-            macro_map: MacroMap::new(),
-            global: self.global,
-        };
-    }
 }
 
 pub struct GroupStates(Vec<GroupState>);
 impl GroupStates {
-    pub fn new() -> Self {
-        Self(vec![GroupState::new()])
-    }
-
     pub fn push(&mut self) {
         self.0.push(self.0.last().unwrap().child())
     }
 
     pub fn pop(&mut self) -> Result<(), Error> {
         self.0.pop();
-        if self.0.len() == 0 {
+        if self.0.is_empty() {
             Err(Error::new_with_message(
                 ErrorKind::ArgumentError,
                 "Last Group Popped",
@@ -74,7 +73,7 @@ impl GroupStates {
         map.macro_map.set(command, m);
     }
     pub fn set_macro(&mut self, command: &str, m: MacroValue) {
-        return self.set_macro_global(command, m, self.0.last().unwrap().global);
+        self.set_macro_global(command, m, self.0.last().unwrap().global)
     }
     pub fn get_category(&self, chr: char) -> CharacterCategory {
         for mv in self.0.iter().rev() {
@@ -95,5 +94,11 @@ impl GroupStates {
     }
     pub fn set_category(&mut self, chr: char, cat: CharacterCategory) {
         self.set_category_global(chr, cat, self.0.last().unwrap().global);
+    }
+}
+
+impl Default for GroupStates {
+    fn default() -> Self {
+        Self(vec![GroupState::default()])
     }
 }

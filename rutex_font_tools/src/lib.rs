@@ -1,4 +1,4 @@
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 #![feature(slice_as_array)]
 #![feature(maybe_uninit_uninit_array_transpose)]
 #![feature(debug_closure_helpers)]

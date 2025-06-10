@@ -21,13 +21,10 @@ const PRE_DEF_ITEMS: &'static [(&'static str, MacroValue)] = &[
     (r"\openin", MacroValue::PredefinedMacro(&primitives::openin)),
 ];
 
+#[derive(Default)]
 pub struct MacroMap(HashMap<String, MacroValue>);
 
 impl MacroMap {
-    pub fn new() -> Self {
-        MacroMap(HashMap::new())
-    }
-
     pub fn new_and_init() -> Self {
         let map: HashMap<String, MacroValue, RandomState> = HashMap::from_iter(
             PRE_DEF_ITEMS
